@@ -37,11 +37,11 @@ jobs:
     runs-on: ${{ matrix.job.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
         if: not ${{ matrix.job.cross }}
-      - name: Doc
+      - name: Install Cross Compiler
         if: matrix.job.os == 'linux'
         run: |
           sudo apt-get update
@@ -58,12 +58,13 @@ jobs:
 
           
       - name: Install toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.job.target }}
-          toolchain: stable
+          toolchain: 1.76.0
+          components: rust-src,rustfmt,clippy
       - name: Setup Cache
-        uses: Swatinem/rust-cache@v2.2.1
+        uses: Swatinem/rust-cache@v2.7.3
         with:
           shared-key: "build-${{ matrix.job.target }}"
       - name: Build
@@ -72,6 +73,12 @@ jobs:
       - name: Test
         run: |
           cargo test --locked --release --target ${{ matrix.job.target }}
+      - name: Format
+        run: |
+          cargo fmt --check
+      - name: Clippy
+        run: |
+          cargo clippy --no-deps -- -Dwarnings
       - name: Doc
         if: matrix.job.target == 'x86_64-unknown-linux-musl'
         run: |
