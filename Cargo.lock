@@ -1558,8 +1558,9 @@ dependencies = [
 
 [[package]]
 name = "rcgen"
-version = "0.11.3"
-source = "git+https://github.com/rustls/rcgen.git?branch=main#0318d2f0a4bb9e65c84d284acff8587bd418d837"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48406db8ac1f3cbc7dcdb56ec355343817958a356ff430259bb07baf7607e1e1"
 dependencies = [
  "pem",
  "ring",
@@ -1664,6 +1665,8 @@ dependencies = [
 [[package]]
 name = "rusftp"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98791fd06af63a19cb94e82af27bb6163c730e4f2406e68a690961fe8b3c167b"
 dependencies = [
  "bytes",
  "futures",
@@ -2042,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "terraform-provider-generic"
-version = "0.1.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-process",
@@ -2067,7 +2070,9 @@ dependencies = [
 
 [[package]]
 name = "tf-provider"
-version = "0.1.2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4366fb9a395d10708df8a6db21d5be1e8e1b089e3ab298f104c2204f335ed8f6"
 dependencies = [
  "anyhow",
  "async-stream",

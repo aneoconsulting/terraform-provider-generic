@@ -63,13 +63,13 @@ jobs:
             "name": "${NAME}",
             "version": "${TAG#v}",
             "pgp": {
-              "source": "lemaitre.pgp.pub",
+              "source": "aneo.pgp.pub",
               "key_id": "$pgp_id",
-              "ascii_armor": $(jq -cn --rawfile armor ../lemaitre.pgp.pub '$armor')
+              "ascii_armor": $(jq -cn --rawfile armor ../aneo.pgp.pub '$armor')
             }
           }
           EOF
-          cp ../lemaitre.pgp.pub .
+          cp ../aneo.pgp.pub .
           cp ../manifest.json "terraform-provider-${NAME}_${TAG#v}_manifest.json"
       - name: Upload Assets
         env:

@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     generic = {
-      source  = "localhost/lemaitre/generic"
+      source  = "localhost/aneoconsulting/generic"
       version = "= 0.1.0"
     }
   }

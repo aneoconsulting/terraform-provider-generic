@@ -3,3 +3,4 @@ target
 .direnv
 /tf-test
 tools/tfplugindocs
+aneo.pgp.priv

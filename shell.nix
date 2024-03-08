@@ -6,4 +6,3 @@ pkgs.mkShell {
 
   packages = with pkgs; [ terraform jq protobuf rustc rustfmt rust-analyzer cargo clippy grpcurl vscode ];
 }
-
