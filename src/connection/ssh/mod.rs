@@ -19,7 +19,7 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use crate::connection::{Connection, ExecutionResult};
 use anyhow::Result;
 use async_trait::async_trait;
-use futures_core::Future;
+use futures::Future;
 use rusftp::SftpClient;
 use serde::{Deserialize, Serialize};
 use tf_provider::{
