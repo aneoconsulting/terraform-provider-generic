@@ -2061,8 +2061,6 @@ dependencies = [
  "base64",
  "bytes",
  "futures",
- "futures-core",
- "futures-util",
  "lazy_static",
  "rand 0.8.5",
  "rusftp",
@@ -2070,10 +2068,7 @@ dependencies = [
  "rust-crypto",
  "serde",
  "tf-provider",
- "time 0.3.34",
  "tokio",
- "tokio-stream",
- "tokio-util",
 ]
 
 [[package]]
