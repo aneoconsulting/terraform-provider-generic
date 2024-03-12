@@ -116,8 +116,6 @@ impl Connection for ConnectionSsh {
         K: AsRef<str> + Send + Sync + 'b,
         V: AsRef<str> + Send + Sync + 'b,
     {
-        _ = env;
-
         let client = self.get_client(config).await?;
         let result = client.execute(cmd, dir, env).await?;
         Ok(result)
