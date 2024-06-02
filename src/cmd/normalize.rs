@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tf_provider::{Diagnostics, Value};
+use tf_provider::{value::Value, Diagnostics};
 
 use crate::{connection::Connection, utils::WithNormalize};
 

@@ -18,7 +18,7 @@ use std::cell::RefCell;
 
 use async_trait::async_trait;
 
-use tf_provider::{AttributePath, Diagnostics, Schema, Value};
+use tf_provider::{schema::Schema, value::Value, AttributePath, Diagnostics};
 
 pub(crate) trait WithSchema {
     fn schema() -> Schema;
@@ -120,4 +120,9 @@ where
         }
         Ok(())
     }
+}
+
+#[async_trait]
+pub trait AsyncDrop {
+    async fn async_drop(&mut self) -> () {}
 }

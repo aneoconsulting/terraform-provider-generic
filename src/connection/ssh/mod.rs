@@ -16,25 +16,26 @@
 
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use crate::connection::{Connection, ExecutionResult};
+use crate::{
+    connection::{Connection, ExecutionResult},
+    utils::AsyncDrop,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::Future;
-use rusftp::SftpClient;
-use serde::{Deserialize, Serialize};
-use tf_provider::{
-    map, Attribute, AttributeConstraint, AttributePath, AttributeType, Description, Diagnostics,
-    Value, ValueString,
+use rusftp::{
+    client::{Error, File, SftpClient},
+    message::{Attrs, PFlags, Permisions, Status, StatusCode},
 };
+use serde::{Deserialize, Serialize};
+use tf_provider::schema::{Attribute, AttributeConstraint, AttributeType, Description};
+use tf_provider::value::{Value, ValueString};
+use tf_provider::{map, AttributePath, Diagnostics};
 use tokio::sync::Mutex;
 
 mod client;
-mod reader;
-mod writer;
 
-use client::{Client, ClientHandler};
-pub use reader::SftpReader;
-pub use writer::SftpWriter;
+use client::Client;
 
 #[derive(Default, Clone)]
 pub struct ConnectionSsh {
@@ -99,8 +100,8 @@ impl<'a> ConnectionSshConfig<'a> {
 impl Connection for ConnectionSsh {
     const NAME: &'static str = "ssh";
     type Config<'a> = ConnectionSshConfig<'a>;
-    type Reader = SftpReader;
-    type Writer = SftpWriter;
+    type Reader = File;
+    type Writer = File;
 
     async fn execute<'a, 'b, I, K, V>(
         &self,
@@ -123,8 +124,10 @@ impl Connection for ConnectionSsh {
 
     /// Return a reader to read a remote file
     async fn read<'a>(&self, config: &Self::Config<'a>, path: &str) -> Result<Self::Reader> {
-        let client = self.get_client(config).await?;
-        Ok(SftpReader::new(&client.handle, path).await?)
+        let ssh = self.get_client(config).await?;
+        let sftp = SftpClient::new(&ssh.handle).await?;
+
+        Ok(sftp.open_with_flags(path, PFlags::READ).await?)
     }
 
     /// Return a writer to write a remote file
@@ -135,21 +138,53 @@ impl Connection for ConnectionSsh {
         mode: u32,
         overwrite: bool,
     ) -> Result<Self::Writer> {
-        let client = self.get_client(config).await?;
-        Ok(SftpWriter::new(&client.handle, path, mode, overwrite).await?)
+        let ssh = self.get_client(config).await?;
+        let sftp = SftpClient::new(&ssh.handle).await?;
+
+        let mut flags = PFlags::WRITE | PFlags::CREATE;
+        if overwrite {
+            flags |= PFlags::TRUNCATE;
+        } else {
+            // Check if file exist in case the EXCLUDE flag is not taken into account
+            match sftp.lstat(path).await {
+                Ok(_) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "File already exists",
+                    )
+                    .into())
+                }
+                Err(Error::Sftp(Status {
+                    code: StatusCode::NoSuchFile,
+                    ..
+                })) => (),
+                Err(err) => {
+                    return Err(err.into());
+                }
+            }
+            flags |= PFlags::EXCLUDE;
+        }
+
+        let file = sftp
+            .open_with_flags_attrs(
+                path,
+                flags,
+                Attrs {
+                    perms: Some(Permisions::from_bits_retain(mode)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+        Ok(file)
     }
 
     /// Delete a file
     async fn delete<'a>(&self, config: &Self::Config<'a>, path: &str) -> Result<()> {
         let client = self.get_client(config).await?;
-        let client = SftpClient::new(client.handle.channel_open_session().await?).await?;
+        let client = SftpClient::new(&client.handle).await?;
 
-        client
-            .remove(rusftp::Remove {
-                path: path.to_owned().into(),
-            })
-            .await
-            .map_err(Into::into)
+        Ok(client.remove(path).await?)
     }
 
     /// Validate the state is valid
@@ -221,5 +256,12 @@ impl std::fmt::Debug for ConnectionSsh {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConnectionSsh") /*.field("clients", &self.clients)*/
             .finish()
+    }
+}
+
+#[async_trait]
+impl AsyncDrop for File {
+    async fn async_drop(&mut self) {
+        _ = self.close().await;
     }
 }

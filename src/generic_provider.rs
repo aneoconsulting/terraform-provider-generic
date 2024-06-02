@@ -16,7 +16,8 @@
 
 use async_trait::async_trait;
 
-use tf_provider::{map, Block, Description, Provider, Schema, ValueEmpty};
+use tf_provider::schema::{Block, Description, Schema};
+use tf_provider::{map, value::ValueEmpty, Diagnostics, Provider};
 
 use crate::{
     cmd::{GenericCmdDataSource, GenericCmdResource},
@@ -32,7 +33,7 @@ impl Provider for GenericProvider {
     type Config<'a> = ValueEmpty;
     type MetaState<'a> = ValueEmpty;
 
-    fn schema(&self, _diags: &mut tf_provider::Diagnostics) -> Option<tf_provider::Schema> {
+    fn schema(&self, _diags: &mut Diagnostics) -> Option<Schema> {
         Some(Schema {
             version: 1,
             block: Block {
@@ -61,9 +62,8 @@ impl Provider for GenericProvider {
 
     fn get_resources(
         &self,
-        _diags: &mut tf_provider::Diagnostics,
-    ) -> Option<std::collections::HashMap<String, Box<dyn tf_provider::resource::DynamicResource>>>
-    {
+        _diags: &mut Diagnostics,
+    ) -> Option<std::collections::HashMap<String, Box<dyn tf_provider::DynamicResource>>> {
         Some(map! {
             "local_cmd" => GenericCmdResource::new(ConnectionLocal::default()),
             "ssh_cmd"   => GenericCmdResource::new(ConnectionSsh::default()),
@@ -76,10 +76,8 @@ impl Provider for GenericProvider {
 
     fn get_data_sources(
         &self,
-        _diags: &mut tf_provider::Diagnostics,
-    ) -> Option<
-        std::collections::HashMap<String, Box<dyn tf_provider::data_source::DynamicDataSource>>,
-    > {
+        _diags: &mut Diagnostics,
+    ) -> Option<std::collections::HashMap<String, Box<dyn tf_provider::DynamicDataSource>>> {
         Some(map! {
             "local_cmd" => GenericCmdDataSource::new(ConnectionLocal::default()),
             "ssh_cmd"   => GenericCmdDataSource::new(ConnectionSsh::default()),

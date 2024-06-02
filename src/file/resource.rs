@@ -23,15 +23,17 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
 use serde::{Deserialize, Serialize};
-use tf_provider::{
-    map, value, Attribute, AttributeConstraint, AttributePath, AttributeType, Block, Description,
-    Diagnostics, NestedBlock, Resource, Schema, Value, ValueEmpty, ValueString,
+use tf_provider::schema::{
+    Attribute, AttributeConstraint, AttributeType, Block, Description, NestedBlock, Schema,
 };
+use tf_provider::value::{self, Value, ValueEmpty, ValueString};
+use tf_provider::{map, AttributePath, Diagnostics, Resource};
 use tokio::fs::File;
 use tokio::io::AsyncRead;
 
 use super::hash_stream::DefaultHashingStream;
 use crate::connection::Connection;
+use crate::utils::AsyncDrop;
 
 #[derive(Debug, Default)]
 pub struct GenericFileResource<T: Connection> {
@@ -262,6 +264,8 @@ where
         tokio::pin!(reader, writer);
 
         let copy = tokio::io::copy(&mut reader, &mut writer).await;
+        reader.async_drop().await;
+
         match &copy {
             Ok(_) => {
                 let (md5, sha1, sha256, sha512) = reader.fingerprints_hex();
@@ -312,7 +316,7 @@ where
     ) -> Option<(
         Self::State<'a>,
         Self::PrivateState<'a>,
-        Vec<tf_provider::attribute_path::AttributePath>,
+        Vec<tf_provider::AttributePath>,
     )> {
         let mut state = proposed_state;
         if config_state.content.is_null() {
@@ -343,10 +347,10 @@ where
         &self,
         _diags: &mut Diagnostics,
         _prior_state: Self::State<'a>,
-        _prior_private_state: Self::PrivateState<'a>,
+        prior_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
-    ) -> Option<()> {
-        Some(())
+    ) -> Option<Self::PrivateState<'a>> {
+        Some(prior_private_state)
     }
 
     async fn create<'a>(
@@ -394,6 +398,7 @@ where
         &self,
         diags: &mut Diagnostics,
         state: Self::State<'a>,
+        _planned_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<()> {
         let default_connect_config = Default::default();
@@ -484,6 +489,7 @@ impl<T: Connection> GenericFileResource<T> {
         {
             Ok(writer) => writer,
             Err(err) => {
+                log::error!("Could not open file for writing: {err}");
                 diags.root_error("Could not open file for writing", err.to_string());
                 return None;
             }
@@ -504,11 +510,13 @@ impl<T: Connection> GenericFileResource<T> {
             match base64::engine::general_purpose::STANDARD.decode(base64.as_bytes()) {
                 Ok(decoded) => Content::Base64(decoded),
                 Err(err) => {
+                    log::error!("Invalid base64");
                     diags.error(
                         "Invalid base64",
                         err.to_string(),
                         AttributePath::new("content_base64"),
                     );
+                    writer.async_drop().await;
                     return None;
                 }
             }
@@ -516,16 +524,20 @@ impl<T: Connection> GenericFileResource<T> {
             match File::open(filename.as_ref()).await {
                 Ok(file) => Content::File(file),
                 Err(err) => {
+                    log::error!("Could not open file for reading: {err}");
                     diags.error(
                         "Could not open file",
                         err.to_string(),
                         AttributePath::new("content_source"),
                     );
+                    writer.async_drop().await;
                     return None;
                 }
             }
         } else {
+            log::error!("No content provided");
             diags.root_error_short("No content provided");
+            writer.async_drop().await;
             return None;
         };
 
@@ -545,7 +557,10 @@ impl<T: Connection> GenericFileResource<T> {
             ContentReader::File(file) => file as &mut (dyn AsyncRead + Send + Unpin),
         };
 
-        match tokio::io::copy(reader, &mut writer).await {
+        let write = tokio::io::copy(reader, &mut writer).await;
+        writer.async_drop().await;
+
+        match write {
             Ok(_) => (),
             Err(err) => {
                 diags.root_error("Could not write to file", err.to_string());

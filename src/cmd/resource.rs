@@ -22,10 +22,8 @@ use async_trait::async_trait;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
-use tf_provider::{
-    AttributePath, Diagnostics, Resource, Schema, Value, ValueEmpty, ValueList, ValueMap,
-    ValueNumber, ValueString,
-};
+use tf_provider::value::{Value, ValueEmpty, ValueList, ValueMap, ValueNumber, ValueString};
+use tf_provider::{schema::Schema, AttributePath, Diagnostics, Resource};
 
 use crate::connection::Connection;
 use crate::utils::{WithCmd, WithEnv, WithNormalize, WithSchema};
@@ -122,7 +120,7 @@ where
     ) -> Option<(
         Self::State<'a>,
         Self::PrivateState<'a>,
-        Vec<tf_provider::attribute_path::AttributePath>,
+        Vec<tf_provider::AttributePath>,
     )> {
         let mut state = proposed_state.clone();
         state.normalize(diags);
@@ -172,8 +170,9 @@ where
         let modified = find_modified(&prior_state.inputs, &proposed_state.inputs);
         let mut trigger_replace = Default::default();
 
-        if !modified.is_empty() {
-            if let Some((update, _)) = find_update(&proposed_state.update, &modified) {
+        if let Some((update, _)) = find_update(&mut state.update, &modified) {
+            if !modified.is_empty() || update.triggers == Value::Value(Default::default()) {
+                state.update_triggered = Value::Unknown;
                 if let Value::Value(outputs) = &mut state.state {
                     let reloads_default = Default::default();
                     let reloads = update.reloads.as_ref().unwrap_or(&reloads_default);
@@ -183,14 +182,12 @@ where
                         }
                     }
                 }
-            } else {
-                trigger_replace = modified
-                    .into_iter()
-                    .map(|name| {
-                        AttributePath::new("inputs").key(name.unwrap_or_default().into_owned())
-                    })
-                    .collect();
             }
+        } else if !modified.is_empty() {
+            trigger_replace = modified
+                .into_iter()
+                .map(|name| AttributePath::new("inputs").key(name.unwrap_or_default().into_owned()))
+                .collect();
         }
 
         Some((state, prior_private_state, trigger_replace))
@@ -200,10 +197,10 @@ where
         &self,
         _diags: &mut Diagnostics,
         _prior_state: Self::State<'a>,
-        _prior_private_state: Self::PrivateState<'a>,
+        prior_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
-    ) -> Option<()> {
-        Some(())
+    ) -> Option<Self::PrivateState<'a>> {
+        Some(prior_private_state)
     }
 
     async fn create<'a>(
@@ -317,52 +314,56 @@ where
         state_env.push((Cow::from("VERSION"), Cow::from(version.to_string())));
 
         let modified = find_modified(&prior_state.inputs, &planned_state.inputs);
-        if let Some((update, attr_path)) = find_update(&planned_state.update, &modified) {
-            let attr_path = attr_path.attribute("cmd");
-            let update_cmd = update.cmd();
-            let update_dir = update.dir();
-            if !update_cmd.is_empty() {
-                match self
-                    .connect
-                    .execute(
-                        connection,
-                        update_cmd,
-                        update_dir,
-                        with_env(&state_env, update.env()),
-                    )
-                    .await
-                {
-                    Ok(res) => {
-                        if !res.stdout.is_empty() {
-                            diags.warning(
-                                "`update` stdout was not empty",
-                                res.stdout,
-                                attr_path.clone(),
-                            );
-                        }
-                        if res.status == 0 {
-                            if !res.stderr.is_empty() {
+
+        if let Some((update, attr_path)) = find_update(&mut state.update, &modified) {
+            if !modified.is_empty() || update.triggers == Value::Value(Default::default()) {
+                state.update_triggered = Value::Null;
+                let attr_path = attr_path.attribute("cmd");
+                let update_cmd = update.cmd();
+                let update_dir = update.dir();
+                if !update_cmd.is_empty() {
+                    match self
+                        .connect
+                        .execute(
+                            connection,
+                            update_cmd,
+                            update_dir,
+                            with_env(&state_env, update.env()),
+                        )
+                        .await
+                    {
+                        Ok(res) => {
+                            if !res.stdout.is_empty() {
                                 diags.warning(
-                                    "`update` succeeded but stderr was not empty",
+                                    "`update` stdout was not empty",
+                                    res.stdout,
+                                    attr_path.clone(),
+                                );
+                            }
+                            if res.status == 0 {
+                                if !res.stderr.is_empty() {
+                                    diags.warning(
+                                        "`update` succeeded but stderr was not empty",
+                                        res.stderr,
+                                        attr_path,
+                                    );
+                                }
+                            } else {
+                                diags.error(
+                                    format!("`update` failed with status code: {}", res.status),
                                     res.stderr,
                                     attr_path,
                                 );
                             }
-                        } else {
-                            diags.error(
-                                format!("`update` failed with status code: {}", res.status),
-                                res.stderr,
-                                attr_path,
-                            );
+                        }
+                        Err(err) => {
+                            diags.error("Failed to update resource", err.to_string(), attr_path);
                         }
                     }
-                    Err(err) => {
-                        diags.error("Failed to update resource", err.to_string(), attr_path);
-                    }
+                } else {
+                    diags.error_short("`update` cmd should not be null or empty", attr_path);
+                    return None;
                 }
-            } else {
-                diags.error_short("`update` cmd should not be null or empty", attr_path);
-                return None;
             }
         }
 
@@ -376,6 +377,7 @@ where
         &self,
         diags: &mut Diagnostics,
         state: Self::State<'a>,
+        _planned_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<()> {
         let connection_default = Default::default();
@@ -468,28 +470,32 @@ fn find_modified<'a>(
     }
 }
 
-fn find_update<'a>(
-    updates: &'a ValueList<Value<StateUpdate<'a>>>,
-    modified: &'a BTreeSet<ValueString<'a>>,
-) -> Option<(&'a StateUpdate<'a>, AttributePath)> {
+fn find_update<'a, 'b, 'c>(
+    updates: &'b mut ValueList<Value<StateUpdate<'a>>>,
+    modified: &'c BTreeSet<ValueString<'c>>,
+) -> Option<(&'b mut StateUpdate<'a>, AttributePath)> {
     let empty_set = Default::default();
-    let updates = updates.as_ref_option()?;
+    let updates = updates.as_mut_option()?;
 
-    let mut found: Option<(&'a StateUpdate<'a>, usize)> = None;
-    for (i, update) in updates.iter().flatten().enumerate() {
-        let triggers = update.triggers.as_ref().unwrap_or(&empty_set);
-        if triggers.is_empty() {
-            if found.is_none() {
-                found = Some((update, i));
+    let mut found: Option<(&'b mut StateUpdate<'a>, usize)> = None;
+    for (i, update) in updates.iter_mut().flatten().enumerate() {
+        match &update.triggers {
+            Value::Value(triggers) => {
+                if triggers.is_superset(modified) {
+                    if let Some(found) = &mut found {
+                        let previous_triggers = found.0.triggers.as_ref().unwrap_or(&empty_set);
+                        if previous_triggers.len() > triggers.len() {
+                            *found = (update, i);
+                        }
+                    } else {
+                        found = Some((update, i));
+                    }
+                }
             }
-        } else if triggers.is_superset(modified) {
-            if let Some((previous, _)) = found {
-                let previous_triggers = previous.triggers.as_ref().unwrap_or(&empty_set);
-                if previous_triggers.len() > triggers.len() {
+            _ => {
+                if found.is_none() {
                     found = Some((update, i));
                 }
-            } else {
-                found = Some((update, i));
             }
         }
     }

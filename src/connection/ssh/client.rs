@@ -23,7 +23,7 @@ use rusftp::russh::{
     self,
     client::{Config, Handle, Handler},
 };
-use tf_provider::Value;
+use tf_provider::value::Value;
 use tokio::{
     io::AsyncWriteExt,
     sync::mpsc::{error::SendError, Sender},
@@ -222,9 +222,9 @@ impl Handler for ClientHandler {
     type Error = Error;
 
     async fn check_server_key(
-        self,
+        &mut self,
         _server_public_key: &russh_keys::key::PublicKey,
-    ) -> Result<(Self, bool), Self::Error> {
-        Ok((self, true))
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
     }
 }

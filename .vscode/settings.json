@@ -1,7 +1,13 @@
 {
     "rust-analyzer.linkedProjects": [
-        "./Cargo.toml",
+        "./Cargo.toml"
     ],
+    "rust-analyzer.files.excludeDirs": [
+        ".direnv",
+        ".git",
+        "tf-test"
+    ],
+    "rust-analyzer.cachePriming.enable": false,
     "editor.formatOnPaste": true,
     "editor.formatOnSave": true
 }

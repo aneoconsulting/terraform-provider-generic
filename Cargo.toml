@@ -13,13 +13,14 @@ strip = "debuginfo"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tf-provider = "0.1"
-rusftp = "0.1"
+tf-provider = "0.2.2"
+rusftp = "0.2.0"
 
-async-process = "2.0"
+async-process = "2.2"
 futures = "0.3"
 lazy_static = "1.4"
-tokio = { version = "1.0", features = [
+log = "0.4"
+tokio = { version = "1.37", features = [
     "rt-multi-thread",
     "macros",
     "sync",
@@ -29,10 +30,10 @@ tokio = { version = "1.0", features = [
 
 serde = { version = "1.0", features = ["derive"] }
 rand = "0.8"
-russh-keys = "0.38"
+russh-keys = "0.43"
 
 async-trait = "0.1"
 anyhow = "1"
-base64 = "0.21"
+base64 = "0.22"
 rust-crypto = "0.2"
-bytes = "1.4"
+bytes = "1.6"
