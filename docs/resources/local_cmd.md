@@ -23,12 +23,13 @@ Custom resource managed with local commands
 - `destroy` (Block List, Max: 1) Command to execute to destroy the resource (see [below for nested schema](#nestedblock--destroy))
 - `inputs` (Map of String) Inputs to the commands
 - `read` (Block Map) Command to execute to get the value of the output (see [below for nested schema](#nestedblock--read))
-- `update` (Block Set, Max: 9223372036854775807) Command to execute when an input changes (see [below for nested schema](#nestedblock--update))
+- `update` (Block List, Max: 9223372036854775807) Command to execute when an input changes (see [below for nested schema](#nestedblock--update))
 
 ### Read-Only
 
 - `id` (String) Random id for the command
 - `state` (Map of String) State of the resource
+- `update_triggered` (Number) update_triggered
 
 <a id="nestedblock--connect"></a>
 ### Nested Schema for `connect`

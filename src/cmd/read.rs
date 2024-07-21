@@ -17,7 +17,8 @@
 use std::borrow::Cow;
 
 use futures::{stream, StreamExt};
-use tf_provider::{AttributePath, Diagnostics, Value, ValueMap, ValueNumber, ValueString};
+use tf_provider::value::{Value, ValueMap, ValueNumber, ValueString};
+use tf_provider::{AttributePath, Diagnostics};
 
 use crate::{
     connection::Connection,

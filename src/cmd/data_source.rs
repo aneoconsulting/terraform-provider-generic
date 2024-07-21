@@ -18,7 +18,8 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 
-use tf_provider::{AttributePath, DataSource, Diagnostics, Schema, Value, ValueEmpty};
+use tf_provider::value::{Value, ValueEmpty};
+use tf_provider::{schema::Schema, AttributePath, DataSource, Diagnostics};
 
 use crate::connection::Connection;
 use crate::utils::WithSchema;

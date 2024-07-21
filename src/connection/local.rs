@@ -16,13 +16,19 @@
 
 use std::collections::HashMap;
 
-use crate::connection::{Connection, ExecutionResult};
+use crate::{
+    connection::{Connection, ExecutionResult},
+    utils::AsyncDrop,
+};
 use anyhow::{anyhow, Error, Result};
 use async_process::{Command, Output};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tf_provider::{attribute_path::AttributePath, Attribute, Diagnostics};
-use tokio::fs::{File, OpenOptions};
+use tf_provider::{schema::Attribute, AttributePath, Diagnostics};
+use tokio::{
+    fs::{File, OpenOptions},
+    io::AsyncWriteExt,
+};
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct ConnectionLocal {}
@@ -144,5 +150,12 @@ impl Connection for ConnectionLocal {
 
     fn schema() -> HashMap<String, Attribute> {
         Default::default()
+    }
+}
+
+#[async_trait]
+impl AsyncDrop for File {
+    async fn async_drop(&mut self) {
+        _ = self.shutdown().await;
     }
 }

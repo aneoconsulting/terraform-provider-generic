@@ -22,12 +22,13 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 
-use tf_provider::{
-    map, value, Attribute, AttributeConstraint, AttributePath, AttributeType, Block, DataSource,
-    Description, Diagnostics, NestedBlock, Schema, Value, ValueEmpty, ValueString,
+use tf_provider::schema::{
+    Attribute, AttributeConstraint, AttributeType, Block, Description, NestedBlock, Schema,
 };
+use tf_provider::value::{self, Value, ValueEmpty, ValueString};
+use tf_provider::{map, AttributePath, DataSource, Diagnostics};
 
-use crate::{connection::Connection, file::hash_stream::DefaultHashingStream};
+use crate::{connection::Connection, file::hash_stream::DefaultHashingStream, utils::AsyncDrop};
 
 #[derive(Debug, Default)]
 pub struct GenericFileDataSource<T: Connection> {
@@ -196,7 +197,10 @@ where
 
         let mut content = Vec::new();
 
-        if let Err(err) = reader.read_to_end(&mut content).await {
+        let read = reader.read_to_end(&mut content).await;
+        reader.async_drop().await;
+
+        if let Err(err) = read {
             diags.root_error("Could not read file", err.to_string());
             return None;
         }

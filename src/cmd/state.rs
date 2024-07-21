@@ -17,11 +17,12 @@
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-use tf_provider::{
-    map,
-    value::{self, ValueBool},
-    Attribute, AttributeConstraint, AttributeType, Block, Description, NestedBlock, Schema, Value,
-    ValueList, ValueMap, ValueNumber, ValueSet, ValueString,
+use tf_provider::map;
+use tf_provider::schema::{
+    Attribute, AttributeConstraint, AttributeType, Block, Description, NestedBlock, Schema,
+};
+use tf_provider::value::{
+    self, Value, ValueBool, ValueEmpty, ValueList, ValueMap, ValueNumber, ValueSet, ValueString,
 };
 
 use crate::{
@@ -47,6 +48,7 @@ where
     #[serde(with = "value::serde_as_vec")]
     pub connect: Value<T::Config<'a>>,
     pub command_concurrency: ValueNumber,
+    pub update_triggered: ValueEmpty,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -172,6 +174,12 @@ where
                         constraint: AttributeConstraint::Optional,
                         ..Default::default()
                     },
+                    "update_triggered" => Attribute {
+                        attr_type: AttributeType::Number,
+                        description: Description::plain("update_triggered"),
+                        constraint: AttributeConstraint::Computed,
+                        ..Default::default()
+                    },
                 },
                 blocks: map! {
                     "read" => READ_BLOCK.clone(),
@@ -197,7 +205,7 @@ where
                         ),
                         ..Default::default()
                     }),
-                    "update" => NestedBlock::Set(Block {
+                    "update" => NestedBlock::List(Block {
                         attributes: map! {
                             "cmd" => CMD_ATTRIBUTE.clone(),
                             "dir" => DIR_ATTRIBUTE.clone(),

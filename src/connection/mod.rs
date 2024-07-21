@@ -19,8 +19,10 @@ use std::collections::HashMap;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tf_provider::{attribute_path::AttributePath, Attribute, Diagnostics};
+use tf_provider::{schema::Attribute, AttributePath, Diagnostics};
 use tokio::io::{AsyncRead, AsyncWrite};
+
+use crate::utils::AsyncDrop;
 
 pub mod local;
 pub mod ssh;
@@ -36,8 +38,8 @@ pub struct ExecutionResult {
 pub trait Connection: Send + Sync + 'static + Default {
     const NAME: &'static str;
     type Config<'a>: Send + Sync + Clone + Default + Serialize + for<'de> Deserialize<'de>;
-    type Reader: AsyncRead + Send;
-    type Writer: AsyncWrite + Send;
+    type Reader: AsyncRead + Send + AsyncDrop;
+    type Writer: AsyncWrite + Send + AsyncDrop;
 
     /// execute a command over the connection
     async fn execute<'a, 'b, I, K, V>(

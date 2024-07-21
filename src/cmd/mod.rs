@@ -16,7 +16,7 @@
 
 use std::borrow::Cow;
 
-use tf_provider::{ValueMap, ValueString};
+use tf_provider::value::{ValueMap, ValueString};
 
 mod data_source;
 mod normalize;

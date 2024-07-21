@@ -16,6 +16,7 @@
 
 use std::{borrow::BorrowMut, pin::Pin, task::Poll};
 
+use async_trait::async_trait;
 use crypto::{
     digest::Digest,
     md5::Md5,
@@ -23,6 +24,8 @@ use crypto::{
     sha2::{Sha256, Sha512},
 };
 use tokio::io::{AsyncRead, AsyncWrite};
+
+use crate::utils::AsyncDrop;
 
 pub(super) struct HashingStream<D, I> {
     pub(super) digest: D,
@@ -131,5 +134,17 @@ impl<Inner> DefaultHashingStream<Inner> {
             digest: (Md5::new(), Sha1::new(), Sha256::new(), Sha512::new()),
             inner,
         }
+    }
+}
+
+#[async_trait]
+impl<'a, Hash, Inner> AsyncDrop for HashingStream<Hash, std::pin::Pin<&'a mut Inner>>
+where
+    Inner: AsyncDrop + Send,
+    Hash: Send,
+{
+    async fn async_drop(&mut self) {
+        let inner = self.inner.borrow_mut().as_mut();
+        unsafe { inner.get_unchecked_mut().async_drop().await }
     }
 }

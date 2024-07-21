@@ -16,7 +16,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use tf_provider::{AttributePath, Diagnostics, Value};
+use tf_provider::{value::Value, AttributePath, Diagnostics};
 
 use crate::connection::Connection;
 use crate::utils::DisplayJoinable;
