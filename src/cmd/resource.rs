@@ -74,6 +74,11 @@ where
         private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<(Self::State<'a>, Self::PrivateState<'a>)> {
+        // Resource has been imported, but not yet updated
+        if private_state.is_unknown() {
+            return Some((state, private_state));
+        }
+
         let mut state_env = prepare_envs(&[(&state.inputs, "INPUT_"), (&state.state, "STATE_")]);
         state_env.push((Cow::from("ID"), Cow::from(state.id.as_str())));
 
@@ -114,14 +119,24 @@ where
         diags: &mut Diagnostics,
         prior_state: Self::State<'a>,
         proposed_state: Self::State<'a>,
-        _config_state: Self::State<'a>,
+        config_state: Self::State<'a>,
         prior_private_state: Self::PrivateState<'a>,
-        _provider_meta_state: Self::ProviderMetaState<'a>,
+        provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<(
         Self::State<'a>,
         Self::PrivateState<'a>,
         Vec<tf_provider::AttributePath>,
     )> {
+        // Resource has been imported, but not yet updated.
+        // The state is read from the config, before planning the update.
+        let proposed_state = if prior_private_state.is_unknown() {
+            self.read(diags, config_state, Value::Value(0), provider_meta_state)
+                .await?
+                .0
+        } else {
+            proposed_state
+        };
+
         let mut state = proposed_state.clone();
         state.normalize(diags);
 
@@ -195,11 +210,17 @@ where
 
     async fn plan_destroy<'a>(
         &self,
-        _diags: &mut Diagnostics,
+        diags: &mut Diagnostics,
         _prior_state: Self::State<'a>,
         prior_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<Self::PrivateState<'a>> {
+        if prior_private_state.is_unknown() {
+            diags.root_warning(
+                "Destroy ignored on newly imported resource",
+                "The resource has just been imported and need to be applied once in order to know how it should be destroyed.\nAs it has not been applied since import, it will be removed from state without calling the destroy command."
+            );
+        }
         Some(prior_private_state)
     }
 
@@ -430,6 +451,26 @@ where
             }
         }
         Some(())
+    }
+    async fn import<'a>(
+        &self,
+        _diags: &mut Diagnostics,
+        _id: String,
+    ) -> Option<(Self::State<'a>, Self::PrivateState<'a>)> {
+        let mut state = Self::State {
+            id: Value::Null,
+            inputs: Value::Value(Default::default()),
+            state: Value::Value(Default::default()),
+            read: Value::Value(Default::default()),
+            create: Value::Null,
+            destroy: Value::Null,
+            update: Value::Value(Default::default()),
+            connect: Value::Null,
+            command_concurrency: Value::Null,
+            update_triggered: Value::Null,
+        };
+        state.id = Value::Value(state.extract_id());
+        Some((state, Value::Unknown))
     }
 }
 
