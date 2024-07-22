@@ -37,7 +37,13 @@ pub struct ExecutionResult {
 #[async_trait]
 pub trait Connection: Send + Sync + 'static + Default {
     const NAME: &'static str;
-    type Config<'a>: Send + Sync + Clone + Default + Serialize + for<'de> Deserialize<'de>;
+    type Config<'a>: Send
+        + Sync
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + Serialize
+        + for<'de> Deserialize<'de>;
     type Reader: AsyncRead + Send + AsyncDrop;
     type Writer: AsyncWrite + Send + AsyncDrop;
 

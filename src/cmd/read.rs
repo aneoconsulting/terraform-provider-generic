@@ -156,7 +156,7 @@ where
                     }
                     let mut stdout: Cow<'_, _> = res.stdout.into();
 
-                    if strip_trailing_newline && stdout.as_bytes()[stdout.len() - 1] == b'\n' {
+                    if strip_trailing_newline && stdout.as_bytes().last().copied() == Some(b'\n') {
                         stdout = match stdout {
                             Cow::Borrowed(s) => Cow::Borrowed(&s[0..s.len() - 1]),
                             Cow::Owned(mut s) => {
