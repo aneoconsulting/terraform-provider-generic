@@ -29,7 +29,6 @@ Custom resource managed with local commands
 
 - `id` (String) Random id for the command
 - `state` (Map of String) State of the resource
-- `update_triggered` (Number) update_triggered
 
 <a id="nestedblock--connect"></a>
 ### Nested Schema for `connect`
@@ -101,3 +100,7 @@ Optional:
 - `env` (Map of String) Environment used to execute the command
 - `reloads` (Set of String) What outputs should be read again after this update
 - `triggers` (Set of String) What input changes should trigger this update
+
+Read-Only:
+
+- `update_triggered` (Number) update_triggered
