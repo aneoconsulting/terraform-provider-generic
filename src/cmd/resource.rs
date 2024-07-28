@@ -15,7 +15,7 @@
 // limitations under the License.
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 
 use async_trait::async_trait;
@@ -74,8 +74,16 @@ where
         private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<(Self::State<'a>, Self::PrivateState<'a>)> {
+        let version = match private_state {
+            Value::Value(version) => version.to_string(),
+            Value::Null => String::new(),
+            // Resource has been imported, but not yet updated
+            Value::Unknown => return Some((state, private_state)),
+        };
+
         let mut state_env = prepare_envs(&[(&state.inputs, "INPUT_"), (&state.state, "STATE_")]);
         state_env.push((Cow::from("ID"), Cow::from(state.id.as_str())));
+        state_env.push((Cow::from("VERSION"), Cow::from(version)));
 
         let mut state = state.clone();
         state.normalize(diags);
@@ -116,20 +124,51 @@ where
         proposed_state: Self::State<'a>,
         _config_state: Self::State<'a>,
         prior_private_state: Self::PrivateState<'a>,
-        _provider_meta_state: Self::ProviderMetaState<'a>,
+        provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<(
         Self::State<'a>,
         Self::PrivateState<'a>,
         Vec<tf_provider::AttributePath>,
     )> {
+        let value_map_default = Default::default();
+        // Resource has been imported, but not yet updated.
+        // The state is read from the config, before planning the update.
+        let prior_state = if prior_private_state.is_unknown() {
+            self.read(
+                diags,
+                ResourceState {
+                    // Copy the inputs from the proposed state while removing the unknowns.
+                    // An unknown input must trigger the related update
+                    inputs: Value::Value(
+                        proposed_state
+                            .inputs
+                            .as_ref()
+                            .unwrap_or(&value_map_default)
+                            .iter()
+                            .filter_map(|(key, value)| {
+                                if value.is_unknown() {
+                                    None
+                                } else {
+                                    Some((key.clone(), value.clone()))
+                                }
+                            })
+                            .collect(),
+                    ),
+                    ..proposed_state.clone()
+                },
+                Value::Value(0),
+                provider_meta_state,
+            )
+            .await?
+            .0
+        } else {
+            prior_state
+        };
+
         let mut state = proposed_state.clone();
         state.normalize(diags);
 
-        let previous_state_default = Default::default();
-        let previous_state = prior_state
-            .state
-            .as_ref()
-            .unwrap_or(&previous_state_default);
+        let previous_state = prior_state.state.as_ref().unwrap_or(&value_map_default);
         let previous_reads_default = Default::default();
         let previous_reads = prior_state.read.as_ref().unwrap_or(&previous_reads_default);
 
@@ -172,7 +211,7 @@ where
 
         if let Some((update, _)) = find_update(&mut state.update, &modified) {
             if !modified.is_empty() || update.triggers == Value::Value(Default::default()) {
-                state.update_triggered = Value::Unknown;
+                update.update_triggered = Value::Unknown;
                 if let Value::Value(outputs) = &mut state.state {
                     let reloads_default = Default::default();
                     let reloads = update.reloads.as_ref().unwrap_or(&reloads_default);
@@ -195,11 +234,17 @@ where
 
     async fn plan_destroy<'a>(
         &self,
-        _diags: &mut Diagnostics,
+        diags: &mut Diagnostics,
         _prior_state: Self::State<'a>,
         prior_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<Self::PrivateState<'a>> {
+        if prior_private_state.is_unknown() {
+            diags.root_warning(
+                "Destroy ignored on newly imported resource",
+                "The resource has just been imported and need to be applied once in order to know how it should be destroyed.\nAs it has not been applied since import, it will be removed from state without calling the destroy command."
+            );
+        }
         Some(prior_private_state)
     }
 
@@ -313,57 +358,72 @@ where
         state_env.push((Cow::from("ID"), Cow::from(id.as_ref())));
         state_env.push((Cow::from("VERSION"), Cow::from(version.to_string())));
 
-        let modified = find_modified(&prior_state.inputs, &planned_state.inputs);
+        let mut updates_default = Default::default();
+        for (i, update) in state
+            .update
+            .as_mut()
+            .unwrap_or(&mut updates_default)
+            .iter_mut()
+            .enumerate()
+        {
+            let Value::Value(
+                update @ StateUpdate {
+                    update_triggered: Value::Unknown,
+                    ..
+                },
+            ) = update
+            else {
+                continue;
+            };
 
-        if let Some((update, attr_path)) = find_update(&mut state.update, &modified) {
-            if !modified.is_empty() || update.triggers == Value::Value(Default::default()) {
-                state.update_triggered = Value::Null;
-                let attr_path = attr_path.attribute("cmd");
-                let update_cmd = update.cmd();
-                let update_dir = update.dir();
-                if !update_cmd.is_empty() {
-                    match self
-                        .connect
-                        .execute(
-                            connection,
-                            update_cmd,
-                            update_dir,
-                            with_env(&state_env, update.env()),
-                        )
-                        .await
-                    {
-                        Ok(res) => {
-                            if !res.stdout.is_empty() {
+            let attr_path = AttributePath::new("update")
+                .index(i as i64)
+                .attribute("cmd");
+            update.update_triggered = Value::Null;
+            let update_cmd = update.cmd();
+            let update_dir = update.dir();
+            if !update_cmd.is_empty() {
+                match self
+                    .connect
+                    .execute(
+                        connection,
+                        update_cmd,
+                        update_dir,
+                        with_env(&state_env, update.env()),
+                    )
+                    .await
+                {
+                    Ok(res) => {
+                        if !res.stdout.is_empty() {
+                            diags.warning(
+                                "`update` stdout was not empty",
+                                res.stdout,
+                                attr_path.clone(),
+                            );
+                        }
+                        if res.status == 0 {
+                            if !res.stderr.is_empty() {
                                 diags.warning(
-                                    "`update` stdout was not empty",
-                                    res.stdout,
-                                    attr_path.clone(),
-                                );
-                            }
-                            if res.status == 0 {
-                                if !res.stderr.is_empty() {
-                                    diags.warning(
-                                        "`update` succeeded but stderr was not empty",
-                                        res.stderr,
-                                        attr_path,
-                                    );
-                                }
-                            } else {
-                                diags.error(
-                                    format!("`update` failed with status code: {}", res.status),
+                                    "`update` succeeded but stderr was not empty",
                                     res.stderr,
                                     attr_path,
                                 );
                             }
-                        }
-                        Err(err) => {
-                            diags.error("Failed to update resource", err.to_string(), attr_path);
+                        } else {
+                            diags.error(
+                                format!("`update` failed with status code: {}", res.status),
+                                res.stderr,
+                                attr_path,
+                            );
                         }
                     }
-                } else {
-                    diags.error_short("`update` cmd should not be null or empty", attr_path);
-                    return None;
+                    Err(err) => {
+                        diags.error("Failed to update resource", err.to_string(), attr_path);
+                    }
                 }
+            } else {
+                diags.error_short("`update` cmd should not be null or empty", attr_path);
+                return None;
             }
         }
 
@@ -377,7 +437,7 @@ where
         &self,
         diags: &mut Diagnostics,
         state: Self::State<'a>,
-        _planned_private_state: Self::PrivateState<'a>,
+        planned_private_state: Self::PrivateState<'a>,
         _provider_meta_state: Self::ProviderMetaState<'a>,
     ) -> Option<()> {
         let connection_default = Default::default();
@@ -385,6 +445,10 @@ where
 
         let mut state_env = prepare_envs(&[(&state.inputs, "INPUT_"), (&state.state, "STATE_")]);
         state_env.push((Cow::from("ID"), Cow::from(state.id.as_str())));
+        state_env.push((
+            Cow::from("Version"),
+            Cow::from(planned_private_state.unwrap_or(0).to_string()),
+        ));
 
         let destroy_cmd = state.destroy.cmd();
         let destroy_dir = state.destroy.dir();
@@ -430,6 +494,39 @@ where
             }
         }
         Some(())
+    }
+    async fn import<'a>(
+        &self,
+        diags: &mut Diagnostics,
+        id: String,
+    ) -> Option<(Self::State<'a>, Self::PrivateState<'a>)> {
+        let mut state = BTreeMap::new();
+        for var in id.split(',') {
+            if var.is_empty() {
+                continue;
+            }
+
+            let (key, value) = var.split_once('=').unwrap_or((var, ""));
+            state.insert(
+                Cow::Owned(key.to_owned()),
+                Value::Value(Cow::Owned(value.to_owned())),
+            );
+        }
+
+        let mut state = Self::State {
+            id: Value::Null,
+            inputs: Value::Value(Default::default()),
+            state: Value::Value(state),
+            read: Value::Value(Default::default()),
+            create: Value::Null,
+            destroy: Value::Null,
+            update: Value::Value(Default::default()),
+            connect: Value::Null,
+            command_concurrency: Value::Null,
+        };
+        state.id = Value::Value(state.extract_id());
+        state.normalize(diags);
+        Some((state, Value::Unknown))
     }
 }
 

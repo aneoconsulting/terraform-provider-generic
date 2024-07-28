@@ -48,7 +48,6 @@ where
     #[serde(with = "value::serde_as_vec")]
     pub connect: Value<T::Config<'a>>,
     pub command_concurrency: ValueNumber,
-    pub update_triggered: ValueEmpty,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -80,6 +79,7 @@ pub struct StateUpdate<'a> {
     pub cmd: StateCmd<'a>,
     pub triggers: ValueSet<ValueString<'a>>,
     pub reloads: ValueSet<ValueString<'a>>,
+    pub update_triggered: ValueEmpty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -174,12 +174,6 @@ where
                         constraint: AttributeConstraint::Optional,
                         ..Default::default()
                     },
-                    "update_triggered" => Attribute {
-                        attr_type: AttributeType::Number,
-                        description: Description::plain("update_triggered"),
-                        constraint: AttributeConstraint::Computed,
-                        ..Default::default()
-                    },
                 },
                 blocks: map! {
                     "read" => READ_BLOCK.clone(),
@@ -224,6 +218,12 @@ where
                                     "What outputs should be read again after this update",
                                 ),
                                 constraint: AttributeConstraint::Optional,
+                                ..Default::default()
+                            },
+                            "update_triggered" => Attribute {
+                                attr_type: AttributeType::Number,
+                                description: Description::plain("update_triggered"),
+                                constraint: AttributeConstraint::Computed,
                                 ..Default::default()
                             },
                         },
