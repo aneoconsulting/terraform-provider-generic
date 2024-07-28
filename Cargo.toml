@@ -1,6 +1,6 @@
 [package]
 name = "terraform-provider-generic"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Florian Lemaitre <flemaitre@aneo.fr>"]
 description = "Terraform plugin for generic resources"
 repository = "https://github.com/aneoconsulting/terraform-provider-generic"
