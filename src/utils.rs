@@ -18,15 +18,10 @@ use std::cell::RefCell;
 
 use async_trait::async_trait;
 
-use tf_provider::{schema::Schema, value::Value, AttributePath, Diagnostics};
+use tf_provider::{schema::Schema, value::Value, Diagnostics};
 
 pub(crate) trait WithSchema {
     fn schema() -> Schema;
-}
-
-#[async_trait]
-pub(crate) trait WithValidate {
-    async fn validate(&self, diags: &mut Diagnostics, attr_path: AttributePath);
 }
 
 pub(crate) trait WithNormalize {
