@@ -1,6 +1,6 @@
 [package]
 name = "terraform-provider-generic"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Florian Lemaitre <flemaitre@aneo.fr>"]
 description = "Terraform plugin for generic resources"
 repository = "https://github.com/aneoconsulting/terraform-provider-generic"
@@ -16,11 +16,11 @@ strip = "debuginfo"
 tf-provider = "0.2.2"
 rusftp = "0.2.1"
 
-async-process = "2.2"
+async-process = "2.3"
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4"
-tokio = { version = "1.37", features = [
+tokio = { version = "1.42", features = [
     "rt-multi-thread",
     "macros",
     "sync",
@@ -36,4 +36,4 @@ async-trait = "0.1"
 anyhow = "1"
 base64 = "0.22"
 rust-crypto = "0.2"
-bytes = "1.6"
+bytes = "1.9"
