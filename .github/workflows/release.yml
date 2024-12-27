@@ -50,8 +50,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: protoc,sccache
+        if: not ${{ matrix.job.cross }}
       - name: Install Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
